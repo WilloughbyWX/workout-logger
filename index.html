@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>EF Workout Logger V6</title>
+<title>EF Workout Logger V7</title>
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -32,16 +32,18 @@
     font-size: 15px;
   }
   input[type="text"],
-  input[type="number"] {
+  input[type="number"],
+  select.main-select {
     width: 100%;
     padding: 14px;
     border: 1px solid #ccd0d5;
     border-radius: 8px;
     box-sizing: border-box;
-    font-size: 16px;
+    font-size: 16px; /* Prevents iOS auto-zoom */
     background-color: #f5f6f7;
+    margin-bottom: 8px;
   }
-  select {
+  select.unit-toggle {
     padding: 4px 8px;
     margin-left: 8px;
     border-radius: 6px;
@@ -107,11 +109,11 @@
 <h2>Workout Logger</h2>
 
 <div class="card">
-  <label for="exercise">Exercise</label>
-  <input type="text" id="exercise" list="exercise-list" placeholder="Select or type new exercise..." onchange="setExercise()">
+  <label for="exerciseSelect">Exercise</label>
+  <select id="exerciseSelect" class="main-select" onchange="handleExerciseChange()">
+    </select>
   
-  <datalist id="exercise-list">
-    </datalist>
+  <input type="text" id="newExerciseInput" placeholder="Type new exercise name..." style="display: none;">
 
   <div class="row">
     <div class="col">
@@ -121,7 +123,7 @@
     <div class="col">
       <label for="weight">
         Weight
-        <select id="unitToggle" onchange="saveUnitPreference()">
+        <select id="unitToggle" class="unit-toggle" onchange="saveUnitPreference()">
           <option value="kg">kg</option>
           <option value="lbs">lbs</option>
         </select>
@@ -159,8 +161,6 @@
   ];
 
   let savedExercises = JSON.parse(localStorage.getItem('ef_exercises')) || defaultExercises;
-
-  // Load saved unit preference (defaults to kg)
   document.getElementById('unitToggle').value = localStorage.getItem('ef_unit') || 'kg';
 
   function saveUnitPreference() {
@@ -168,4 +168,150 @@
     localStorage.setItem('ef_unit', selectedUnit);
   }
 
-  function loadDatalist() {
+  function loadSelect() {
+    const select = document.getElementById('exerciseSelect');
+    select.innerHTML = '<option value="">-- Choose an exercise --</option>';
+    select.innerHTML += '<option value="NEW">➕ Add New Exercise...</option>';
+    
+    savedExercises.forEach(ex => {
+      const option = document.createElement('option');
+      option.value = ex;
+      option.textContent = ex;
+      select.appendChild(option);
+    });
+  }
+
+  // Initial load
+  loadSelect();
+
+  function handleExerciseChange() {
+    const select = document.getElementById('exerciseSelect');
+    const input = document.getElementById('newExerciseInput');
+    
+    if (select.value === 'NEW') {
+      input.style.display = 'block';
+      input.focus();
+    } else {
+      input.style.display = 'none';
+      input.value = '';
+    }
+
+    const chosen = select.value === 'NEW' ? input.value.trim() : select.value;
+    if (chosen !== currentExercise && chosen !== '') {
+      currentExercise = chosen;
+      exerciseLogged = false; 
+      lastWeight = null;
+      weightDelta = 0;
+    }
+  }
+
+  function saveNewExercise(exerciseName) {
+    if (!savedExercises.includes(exerciseName)) {
+      savedExercises.push(exerciseName);
+      savedExercises.sort();
+      localStorage.setItem('ef_exercises', JSON.stringify(savedExercises));
+      loadSelect(); 
+    }
+  }
+
+  function addSet() {
+    const select = document.getElementById('exerciseSelect');
+    const input = document.getElementById('newExerciseInput');
+    
+    let exerciseInput = select.value === 'NEW' ? input.value.trim() : select.value;
+    const reps = document.getElementById('reps').value;
+    const weightStr = document.getElementById('weight').value;
+    const currentUnit = document.getElementById('unitToggle').value;
+
+    if (!exerciseInput) {
+      alert('Please select or type an exercise.');
+      return;
+    }
+    if (!reps || !weightStr) {
+      alert('Please enter both reps and weight.');
+      return;
+    }
+
+    // Reset tracking if exercise changed
+    if (exerciseInput !== currentExercise) {
+      currentExercise = exerciseInput;
+      exerciseLogged = false; 
+      lastWeight = null;
+      weightDelta = 0;
+    }
+
+    // If it was a new exercise, save it and hide the text box
+    if (select.value === 'NEW') {
+      saveNewExercise(currentExercise);
+      select.value = currentExercise;
+      input.style.display = 'none';
+      input.value = '';
+    }
+
+    const outputLog = document.getElementById('outputLog');
+    
+    if (!exerciseLogged) {
+      if (logContent !== '') {
+        logContent += '\n\n'; 
+      }
+      logContent += currentExercise + ':\n';
+      exerciseLogged = true;
+    }
+
+    // Append the set
+    logContent += `${reps} X ${weightStr} ${currentUnit}\n`;
+    
+    outputLog.value = logContent;
+    outputLog.scrollTop = outputLog.scrollHeight;
+
+    // Math Prediction Logic
+    const currentWeightNum = parseFloat(weightStr);
+    
+    if (lastWeight !== null) {
+      weightDelta = currentWeightNum - lastWeight;
+    }
+    lastWeight = currentWeightNum;
+    
+    let nextWeight = lastWeight + weightDelta;
+    nextWeight = Math.round(nextWeight * 100) / 100;
+
+    const weightInput = document.getElementById('weight');
+    weightInput.value = nextWeight;
+    weightInput.select();
+  }
+
+  function copyLog() {
+    const outputLog = document.getElementById('outputLog');
+    if (!outputLog.value) {
+      alert('Log is empty!');
+      return;
+    }
+    outputLog.select();
+    outputLog.setSelectionRange(0, 99999); 
+    navigator.clipboard.writeText(outputLog.value).then(() => {
+        alert('Log copied! Ready to paste into EliteFitness.');
+    }).catch(() => {
+        document.execCommand("copy");
+        alert('Log copied! Ready to paste into EliteFitness.');
+    });
+  }
+
+  function clearLog() {
+    if (confirm('Are you sure you want to clear the entire log?')) {
+      logContent = '';
+      document.getElementById('outputLog').value = '';
+      document.getElementById('exerciseSelect').value = '';
+      document.getElementById('newExerciseInput').style.display = 'none';
+      document.getElementById('newExerciseInput').value = '';
+      document.getElementById('reps').value = '';
+      document.getElementById('weight').value = '';
+      currentExercise = '';
+      exerciseLogged = false;
+      lastWeight = null;
+      weightDelta = 0;
+    }
+  }
+</script>
+
+</body>
+</html>
