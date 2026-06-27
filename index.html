@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>EF Workout Logger V7</title>
+<title>EF Workout Logger V8</title>
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -31,17 +31,50 @@
     margin-top: 12px;
     font-size: 15px;
   }
+  
+  /* Custom Autocomplete Styles */
+  .autocomplete {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+  }
+  .autocomplete-items {
+    position: absolute;
+    border: 1px solid #ccd0d5;
+    border-top: none;
+    z-index: 99;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: 220px;
+    overflow-y: auto;
+    background-color: #fff;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    display: none;
+  }
+  .autocomplete-items div {
+    padding: 14px;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
+    font-size: 16px;
+  }
+  .autocomplete-items div:last-child {
+    border-bottom: none;
+  }
+  .autocomplete-items div:active {
+    background-color: #e9e9e9;
+  }
+
   input[type="text"],
-  input[type="number"],
-  select.main-select {
+  input[type="number"] {
     width: 100%;
     padding: 14px;
     border: 1px solid #ccd0d5;
     border-radius: 8px;
     box-sizing: border-box;
-    font-size: 16px; /* Prevents iOS auto-zoom */
+    font-size: 16px;
     background-color: #f5f6f7;
-    margin-bottom: 8px;
   }
   select.unit-toggle {
     padding: 4px 8px;
@@ -109,11 +142,11 @@
 <h2>Workout Logger</h2>
 
 <div class="card">
-  <label for="exerciseSelect">Exercise</label>
-  <select id="exerciseSelect" class="main-select" onchange="handleExerciseChange()">
-    </select>
-  
-  <input type="text" id="newExerciseInput" placeholder="Type new exercise name..." style="display: none;">
+  <label for="exerciseInput">Exercise</label>
+  <div class="autocomplete">
+    <input type="text" id="exerciseInput" placeholder="Search or type new exercise..." autocomplete="off">
+    <div id="autocomplete-list" class="autocomplete-items"></div>
+  </div>
 
   <div class="row">
     <div class="col">
@@ -152,12 +185,17 @@
   let weightDelta = 0;
 
   const defaultExercises = [
-    "Sitted biceps curl with ez bar", "Bicep curl cable machine EZ bar", "Tricep extension machine", 
-    "Triceps cable pull downs", "Tricep pull ups", "Overhead cable extensions", 
-    "Standing shoulder dumbbell flys", "Standing Dumbbell Lateral Raises", "High-incline shoulder press", 
-    "Decline bench pec dumbbell flys", "Decline Dumbbell Bench Press", "Rear deltoid fly", 
-    "Leg extension", "Sitting calves", "Seated leg curl", "Seated leg press", "V Squat", 
-    "Ab machine", "Russian twists with cable"
+    "Sitted biceps curl with ez bar", "Bicep curl cable machine EZ bar", "Hammer Curls",
+    "Tricep extension machine", "Triceps cable pull downs", "Tricep pull ups", 
+    "Overhead cable extensions", "Skull Crushers",
+    "Standing shoulder dumbbell flys", "Standing Dumbbell Lateral Raises", 
+    "High-incline shoulder press", "Seated Dumbbell Shoulder Press", "Rear deltoid fly", "Face Pulls",
+    "Decline bench pec dumbbell flys", "Decline Dumbbell Bench Press", 
+    "Incline Dumbbell Bench Press", "Flat Barbell Bench Press", "Cable Crossovers", "Pec Deck Machine",
+    "Lat Pulldown", "Seated Cable Row", "Barbell Bent Over Row", "Single Arm Dumbbell Row", "Pull-ups",
+    "Leg extension", "Sitting calves", "Standing Calf Raises", "Seated leg curl", 
+    "Seated leg press", "V Squat", "Hack Squat", "Romanian Deadlift (RDL)", "Walking Lunges",
+    "Ab machine", "Russian twists with cable", "Hanging Leg Raises", "Cable Crunches"
   ];
 
   let savedExercises = JSON.parse(localStorage.getItem('ef_exercises')) || defaultExercises;
@@ -168,62 +206,70 @@
     localStorage.setItem('ef_unit', selectedUnit);
   }
 
-  function loadSelect() {
-    const select = document.getElementById('exerciseSelect');
-    select.innerHTML = '<option value="">-- Choose an exercise --</option>';
-    select.innerHTML += '<option value="NEW">➕ Add New Exercise...</option>';
+  // Smart Search Logic
+  const exInput = document.getElementById('exerciseInput');
+  const autocompleteList = document.getElementById('autocomplete-list');
+
+  function renderList(filterText = '') {
+    autocompleteList.innerHTML = '';
+    const filtered = savedExercises.filter(ex => ex.toLowerCase().includes(filterText.toLowerCase()));
     
-    savedExercises.forEach(ex => {
-      const option = document.createElement('option');
-      option.value = ex;
-      option.textContent = ex;
-      select.appendChild(option);
+    filtered.forEach(ex => {
+      const item = document.createElement('div');
+      // Highlight matching text (optional, but looks nice)
+      const regex = new RegExp(`(${filterText})`, "gi");
+      item.innerHTML = ex.replace(regex, "<strong>$1</strong>");
+      
+      item.addEventListener('click', function() {
+        exInput.value = ex;
+        autocompleteList.style.display = 'none';
+        setExercise();
+      });
+      autocompleteList.appendChild(item);
     });
-  }
 
-  // Initial load
-  loadSelect();
-
-  function handleExerciseChange() {
-    const select = document.getElementById('exerciseSelect');
-    const input = document.getElementById('newExerciseInput');
-    
-    if (select.value === 'NEW') {
-      input.style.display = 'block';
-      input.focus();
+    if (filtered.length > 0) {
+      autocompleteList.style.display = 'block';
     } else {
-      input.style.display = 'none';
-      input.value = '';
-    }
-
-    const chosen = select.value === 'NEW' ? input.value.trim() : select.value;
-    if (chosen !== currentExercise && chosen !== '') {
-      currentExercise = chosen;
-      exerciseLogged = false; 
-      lastWeight = null;
-      weightDelta = 0;
+      autocompleteList.style.display = 'none';
     }
   }
+
+  exInput.addEventListener('focus', () => renderList(exInput.value));
+  exInput.addEventListener('input', () => renderList(exInput.value));
+
+  // Hide the list if you tap anywhere else on the screen
+  document.addEventListener('click', function(e) {
+    if (e.target !== exInput && e.target !== autocompleteList) {
+      autocompleteList.style.display = 'none';
+    }
+  });
 
   function saveNewExercise(exerciseName) {
     if (!savedExercises.includes(exerciseName)) {
       savedExercises.push(exerciseName);
       savedExercises.sort();
       localStorage.setItem('ef_exercises', JSON.stringify(savedExercises));
-      loadSelect(); 
+    }
+  }
+
+  function setExercise() {
+    const exerciseInputValue = exInput.value.trim();
+    if (exerciseInputValue !== currentExercise && exerciseInputValue !== '') {
+      currentExercise = exerciseInputValue;
+      exerciseLogged = false; 
+      lastWeight = null;
+      weightDelta = 0;
     }
   }
 
   function addSet() {
-    const select = document.getElementById('exerciseSelect');
-    const input = document.getElementById('newExerciseInput');
-    
-    let exerciseInput = select.value === 'NEW' ? input.value.trim() : select.value;
+    const exerciseInputValue = exInput.value.trim();
     const reps = document.getElementById('reps').value;
     const weightStr = document.getElementById('weight').value;
     const currentUnit = document.getElementById('unitToggle').value;
 
-    if (!exerciseInput) {
+    if (!exerciseInputValue) {
       alert('Please select or type an exercise.');
       return;
     }
@@ -232,21 +278,8 @@
       return;
     }
 
-    // Reset tracking if exercise changed
-    if (exerciseInput !== currentExercise) {
-      currentExercise = exerciseInput;
-      exerciseLogged = false; 
-      lastWeight = null;
-      weightDelta = 0;
-    }
-
-    // If it was a new exercise, save it and hide the text box
-    if (select.value === 'NEW') {
-      saveNewExercise(currentExercise);
-      select.value = currentExercise;
-      input.style.display = 'none';
-      input.value = '';
-    }
+    setExercise();
+    saveNewExercise(currentExercise);
 
     const outputLog = document.getElementById('outputLog');
     
@@ -278,40 +311,3 @@
     const weightInput = document.getElementById('weight');
     weightInput.value = nextWeight;
     weightInput.select();
-  }
-
-  function copyLog() {
-    const outputLog = document.getElementById('outputLog');
-    if (!outputLog.value) {
-      alert('Log is empty!');
-      return;
-    }
-    outputLog.select();
-    outputLog.setSelectionRange(0, 99999); 
-    navigator.clipboard.writeText(outputLog.value).then(() => {
-        alert('Log copied! Ready to paste into EliteFitness.');
-    }).catch(() => {
-        document.execCommand("copy");
-        alert('Log copied! Ready to paste into EliteFitness.');
-    });
-  }
-
-  function clearLog() {
-    if (confirm('Are you sure you want to clear the entire log?')) {
-      logContent = '';
-      document.getElementById('outputLog').value = '';
-      document.getElementById('exerciseSelect').value = '';
-      document.getElementById('newExerciseInput').style.display = 'none';
-      document.getElementById('newExerciseInput').value = '';
-      document.getElementById('reps').value = '';
-      document.getElementById('weight').value = '';
-      currentExercise = '';
-      exerciseLogged = false;
-      lastWeight = null;
-      weightDelta = 0;
-    }
-  }
-</script>
-
-</body>
-</html>
